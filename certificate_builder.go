@@ -45,8 +45,8 @@ type CertBuilder struct {
 	cert certificate
 }
 
-// New creates certificate builder instances.
-func New(template *Certificate, client any, keyId string, publicKey any) (*CertBuilder, error) {
+// NewCertBuilder creates certificate builder instances.
+func NewCertBuilder(template *Certificate, client any, keyId string, publicKey any) (*CertBuilder, error) {
 	if template == nil {
 		return nil, errors.New("Template certificate can't be nil")
 	}
@@ -83,7 +83,7 @@ func (cb *CertBuilder) Build() ([]byte, error) {
 
 	switch c := cb.client.(type) {
 	case *kms.KMS:
-		return buildWithAwsKMS(cb.TemplateCert, parentCert, c, cb.keyId, cb.PublicKey)
+		return buildCertWithAwsKMS(cb.TemplateCert, parentCert, c, cb.keyId, cb.PublicKey)
 	}
 
 	return nil, errors.New("Unsupported client type.")
@@ -102,24 +102,27 @@ func (cb *CertBuilder) Verify() error {
 
 // HashAlgorithm returns supported hash algorithm.
 func (cb *CertBuilder) HashAlgorithm() (crypto.Hash, error) {
-	awsSignAlgo := getAwsSigningAlgorithmType(cb.TemplateCert.SignatureAlgorithm)
-	if awsSignAlgo == "" {
+	signAlgo := getAwsSigningAlgorithmType(cb.TemplateCert.SignatureAlgorithm)
+	if signAlgo == "" {
 		return 0, errors.New("Unkown signature algorithm")
 	}
 
-	switch awsSignAlgo {
-	case ECDSA_SHA_256, RSASSA_PKCS1_V1_5_SHA_256, RSASSA_PSS_SHA_256:
-		return crypto.SHA256, nil
-	case RSASSA_PKCS1_V1_5_SHA_384, RSASSA_PSS_SHA_384:
-		return crypto.SHA384, nil
-	case RSASSA_PKCS1_V1_5_SHA_512, RSASSA_PSS_SHA_512:
-		return crypto.SHA512, nil
+	switch cb.client.(type) {
+	case *kms.KMS:
+		switch signAlgo {
+		case ECDSA_SHA_256, RSASSA_PKCS1_V1_5_SHA_256, RSASSA_PSS_SHA_256:
+			return crypto.SHA256, nil
+		case RSASSA_PKCS1_V1_5_SHA_384, RSASSA_PSS_SHA_384:
+			return crypto.SHA384, nil
+		case RSASSA_PKCS1_V1_5_SHA_512, RSASSA_PSS_SHA_512:
+			return crypto.SHA512, nil
+		}
 	}
 
 	return 0, errors.New("Unsupported signature hash algorithm")
 }
 
-func buildWithAwsKMS(template, parent *Certificate, awsKms *kms.KMS, keyId string, publicKey any) ([]byte, error) {
+func buildCertWithAwsKMS(template, parent *Certificate, awsKms *kms.KMS, keyId string, publicKey any) ([]byte, error) {
 	if template.SerialNumber == nil {
 		return nil, errors.New("x509: no SerialNumber given")
 	}
